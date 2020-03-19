@@ -46,11 +46,11 @@ def streamData():
     listener = Listener()
     stream = tweepy.Stream(auth = api.auth, listener = listener, tweet_mode = "extended")
 
+    #Find words to stream with
     uk_trends = api.trends_place(12723)
     WORDS = ['a', 'all', 'is', 'was', 'the', 'on', 'COVID-19', 'Corona', 'Bernie', 'Biden']
     for trend in uk_trends[0]["trends"]:
         WORDS.append(trend["name"])
-    print(WORDS)
 
     try:
         print('Starting Stream')
@@ -84,45 +84,66 @@ def clusterData(skipval = 0, limitval = 100):
     #cluster data
     vectorizer = TfidfVectorizer(stop_words='english')
     k = int((len(tweets) * 0.1))
-    model = KMeans(n_clusters=k, max_iter=500)
+    model = KMeans(n_clusters=k, max_iter=300)
     model.fit(vectorizer.fit_transform(tweets))
 
     groups = pd.DataFrame({"group": model.labels_, "tweetID": ids}).groupby(["group"])
     return [group["tweetID"].tolist() for item, group in groups]
 
-def generateClusterStats(idClusters):
-    clusters = []
+clusters = []
+
+def buildClusters(idClusters):
     for cluster in idClusters:
         clusters.append(
             [col.find_one({"_id": ID}, {"_id": 0, "user": 1, "entities": 1}) for ID in cluster]
         )
+    return
 
-    allHashtags = []
-    allUsers = []
+mention_network = {}
+hashtag_network = {} #A: [#B, #C]
 
+def generateNetwork():
+    print("GENERATE")
     for cluster in clusters:            
-        hashtags = []
-        mentions = []
+        for tweet in cluster:
+            user = tweet["user"]
+            hashtags = tweet["entities"]["hashtags"]
+            mentions = tweet["entities"]["user_mentions"]
 
-        for hashtaglist in [tweet["entities"]["hashtags"] for tweet in cluster if tweet["entities"]["hashtags"]]:
-            hashtags = [hashtag["text"] for hashtag in hashtaglist]
-        
-        for mentionlist in [tweet["entities"]["user_mentions"] for tweet in cluster if tweet["entities"]["user_mentions"]]:
-            mentions = [mention["screen_name"] for mention in mentionlist]
-        
-        users = [tweet["user"] for tweet in cluster]
-        print(getImportantUsers(users))
-        allUsers.append(users)
-        # print("hashtags: ", hashtags)
-        # print("mentions: ", mentions)
-        allHashtags.append(hashtags)
+            if not user["id_str"] in mention_network:
+                mention_network[user["id_str"]] = []
+            for mention in mentions:
+                if not mention["id_str"] in mention_network:
+                    mention_network[mention["id_str"]] = []
+                if mention["id_str"] not in mention_network[user["id_str"]]:
+                    mention_network[user["id_str"]].append(mention["id_str"])
 
-    # print(flatten(allHashtags))
+            for hashtag in hashtags:
+                if not hashtag["text"] in hashtag_network:
+                    hashtag_network[hashtag["text"]] = []
+                intermediate = [x["text"] for x in hashtags if x["text"] != hashtag["text"]] #hashtag list without the current hashtag
+                hashtag_network[hashtag["text"]].extend(x for x in intermediate if x not in hashtag_network[hashtag["text"]]) #add remaining hashtags if they are missing     
+
+    printNet(mention_network)
+
+
+        # for hashtaglist in [tweet["entities"]["hashtags"] for tweet in cluster if tweet["entities"]["hashtags"]]:
+        #     hashtags = [hashtag["text"] for hashtag in hashtaglist]
+        
+        # for mentionlist in [tweet["entities"]["user_mentions"] for tweet in cluster if tweet["entities"]["user_mentions"]]:
+        #     mentions = [mention["screen_name"] for mention in mentionlist]
+        
+        # users = [tweet["user"] for tweet in cluster]
+        # print(getGroupUserStats(users))
+
+def printNet(network):
+    for key in network:
+        print (key, network[key])
 
 def flatten(listOfLists):
     return list(itertools.chain(*listOfLists))
 
-def getImportantUsers(users):
+def getGroupUserStats(users):
     #find user with highest number of followers
     importantUsers = {"following": 0, "statuses": 0}
     importantUsers["following"] = max([[user["followers_count"], user["screen_name"]] for user in users])[1]
@@ -130,6 +151,9 @@ def getImportantUsers(users):
     return importantUsers
 
 
+    
+
+
 # streamData()
-clusters = clusterData(limitval=500)
-generateClusterStats(clusters)
+buildClusters(clusterData(limitval=1000))
+generateNetwork()

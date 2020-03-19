@@ -6,6 +6,7 @@ import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import pandas as pd
+import itertools
 
 consumer_key = "4vT6TFI7yIdtNsypX17Z163th"
 consumer_secret = "v9OgxdEy25mELUU9JOU1k8FsfGtHQOBEDlx3V51oauOzzsqZxz"
@@ -89,13 +90,46 @@ def clusterData(skipval = 0, limitval = 100):
     groups = pd.DataFrame({"group": model.labels_, "tweetID": ids}).groupby(["group"])
     return [group["tweetID"].tolist() for item, group in groups]
 
-def generateClusterStats(clusters):
-    tweetClusters = []
-    for cluster in clusters:
-        tweetClusters.append(
-            [list(col.find({"_id": ID}, {"_id": 0, "user": 1, "entities": 1})) for ID in cluster]
+def generateClusterStats(idClusters):
+    clusters = []
+    for cluster in idClusters:
+        clusters.append(
+            [col.find_one({"_id": ID}, {"_id": 0, "user": 1, "entities": 1}) for ID in cluster]
         )
 
+    allHashtags = []
+    allUsers = []
+
+    for cluster in clusters:            
+        hashtags = []
+        mentions = []
+
+        for hashtaglist in [tweet["entities"]["hashtags"] for tweet in cluster if tweet["entities"]["hashtags"]]:
+            hashtags = [hashtag["text"] for hashtag in hashtaglist]
+        
+        for mentionlist in [tweet["entities"]["user_mentions"] for tweet in cluster if tweet["entities"]["user_mentions"]]:
+            mentions = [mention["screen_name"] for mention in mentionlist]
+        
+        users = [tweet["user"] for tweet in cluster]
+        print(getImportantUsers(users))
+        allUsers.append(users)
+        # print("hashtags: ", hashtags)
+        # print("mentions: ", mentions)
+        allHashtags.append(hashtags)
+
+    # print(flatten(allHashtags))
+
+def flatten(listOfLists):
+    return list(itertools.chain(*listOfLists))
+
+def getImportantUsers(users):
+    #find user with highest number of followers
+    importantUsers = {"following": 0, "statuses": 0}
+    importantUsers["following"] = max([[user["followers_count"], user["screen_name"]] for user in users])[1]
+    importantUsers["statuses"] = max([[user["statuses_count"], user["screen_name"]] for user in users])[1]
+    return importantUsers
+
+
 # streamData()
-clusters = clusterData()
+clusters = clusterData(limitval=500)
 generateClusterStats(clusters)

@@ -3,10 +3,13 @@ import tweepy
 import pymongo
 import json
 import time
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import pandas as pd
-import itertools
+
+import networkx as nx
+import matplotlib.pyplot as plt
 
 consumer_key = "4vT6TFI7yIdtNsypX17Z163th"
 consumer_secret = "v9OgxdEy25mELUU9JOU1k8FsfGtHQOBEDlx3V51oauOzzsqZxz"
@@ -86,25 +89,25 @@ def clusterData(skipval = 0, limitval = 100):
     k = int((len(tweets) * 0.1))
     model = KMeans(n_clusters=k, max_iter=300)
     model.fit(vectorizer.fit_transform(tweets))
-
-    groups = pd.DataFrame({"group": model.labels_, "tweetID": ids}).groupby(["group"])
-    return [group["tweetID"].tolist() for item, group in groups]
+ 
+    return pd.DataFrame({"group": model.labels_, "tweetID": ids}).groupby(["group"])
 
 clusters = []
-
-def buildClusters(idClusters):
+def buildClusters(groups):
+    idClusters = [group["tweetID"].tolist() for _, group in groups]
     for cluster in idClusters:
         clusters.append(
             [col.find_one({"_id": ID}, {"_id": 0, "user": 1, "entities": 1}) for ID in cluster]
         )
     return
 
-mention_network = {}
-hashtag_network = {} #A: [#B, #C]
+overall_mention_network = {}
+overall_hashtag_network = {} #A: [#B, #C]
 
 def generateNetwork():
-    print("GENERATE")
-    for cluster in clusters:            
+    for cluster in clusters:  
+        mention_network = {}
+        hashtag_network = {}          
         for tweet in cluster:
             user = tweet["user"]
             hashtags = tweet["entities"]["hashtags"]
@@ -124,36 +127,73 @@ def generateNetwork():
                 intermediate = [x["text"] for x in hashtags if x["text"] != hashtag["text"]] #hashtag list without the current hashtag
                 hashtag_network[hashtag["text"]].extend(x for x in intermediate if x not in hashtag_network[hashtag["text"]]) #add remaining hashtags if they are missing     
 
-    printNet(mention_network)
-
-
-        # for hashtaglist in [tweet["entities"]["hashtags"] for tweet in cluster if tweet["entities"]["hashtags"]]:
-        #     hashtags = [hashtag["text"] for hashtag in hashtaglist]
         
-        # for mentionlist in [tweet["entities"]["user_mentions"] for tweet in cluster if tweet["entities"]["user_mentions"]]:
-        #     mentions = [mention["screen_name"] for mention in mentionlist]
         
         # users = [tweet["user"] for tweet in cluster]
         # print(getGroupUserStats(users))
+
+def getClusterStats(cluster):
+    users = [tweet["user"] for tweet in cluster]
+    importantUsers = {"following": 0, "statuses": 0}
+    importantUsers["following"] = max([[user["followers_count"], user["screen_name"]] for user in users])[1]
+    importantUsers["statuses"] = max([[user["statuses_count"], user["screen_name"]] for user in users])[1]
+
+    for hashtaglist in [tweet["entities"]["hashtags"] for tweet in cluster if tweet["entities"]["hashtags"]]:
+        hashtags = [hashtag["text"] for hashtag in hashtaglist]
+    
+    for mentionlist in [tweet["entities"]["user_mentions"] for tweet in cluster if tweet["entities"]["user_mentions"]]:
+        mentions = [mention["screen_name"] for mention in mentionlist]
+
+    return importantUsers
+
+def getGroupStats(groups):
+    return groups.count().agg(['min','max','mean']).to_string(header=False)
 
 def printNet(network):
     for key in network:
         print (key, network[key])
 
-def flatten(listOfLists):
-    return list(itertools.chain(*listOfLists))
+def createGraph(network):
+    G = nx.DiGraph()
+    for start in network:
+        for end in network[start]: 
+            G.add_edge(start, end)
+    return G
+    
+def getGraphStats(G):
+    #Triads
+    triads = nx.algorithms.triads.triadic_census(G)
+    desirable_triads = ['021C', '111D', '111U', '030T', '030C', '201', '120D', '120U', '120C', '210', '300']
+    strict_triads = [triads[x] for x in desirable_triads]
+    print(triads)
+    print("Number of triads: %d" %(sum(strict_triads)))
+    #Triangles
+    print("Number of triangles: %d" %(triads["300"]))
+    #Degree
+    print("User that gets mentioned the most: ")
+    print(sorted(G.in_degree, key=lambda x: x[1], reverse=True)[0])
+    print("User that mentions the most other people: ")
+    print(sorted(G.out_degree, key=lambda x: x[1], reverse=True)[0])
+    print("User that is part of the most mentions: ")
+    print(sorted(G.degree, key=lambda x: x[1], reverse=True)[0])
 
-def getGroupUserStats(users):
-    #find user with highest number of followers
-    importantUsers = {"following": 0, "statuses": 0}
-    importantUsers["following"] = max([[user["followers_count"], user["screen_name"]] for user in users])[1]
-    importantUsers["statuses"] = max([[user["statuses_count"], user["screen_name"]] for user in users])[1]
-    return importantUsers
+def drawGraph(G):
+    # H = nx.DiGraph()
+    # H.add_edges_from(G.edges())
+    # plt.subplot(121)
+    # nx.draw(H, node_size=1, width=0.2)
+    # plt.subplot(122)
+    nx.draw(G, node_size=1, width=0.2)
+    plt.show()
 
 
     
 
 
 # streamData()
-buildClusters(clusterData(limitval=1000))
+groups = clusterData(skipval = 0, limitval=200)
+buildClusters(groups)
 generateNetwork()
+G = createGraph(overall_mention_network)
+getGraphStats(G)
+# drawGraph(G)

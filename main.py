@@ -14,10 +14,10 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 #These are no longer active Keys: please insert your own from developer.twitter.com
-consumer_key = "4vT6TFI7yIdtNsypX17Z163th"
-consumer_secret = "v9OgxdEy25mELUU9JOU1k8FsfGtHQOBEDlx3V51oauOzzsqZxz"
-access_token = "1227215889461846017-KBoPxWlnrJZ3SZoC9VmedcOG5laF68"
-access_token_secret = "bOm10DTuJ2JytBKI1911tVpMCzNMH8pJSDLKcGPl2ZYHQ"
+consumer_key = "XXXXXXXXXXXXXXXXXXXXXXXXX"
+consumer_secret = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+access_token = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+access_token_secret = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
 #switch these out to whichever configuration is necessary
 client = pymongo.MongoClient("mongodb://localhost:27017")

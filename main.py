@@ -13,11 +13,13 @@ import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 
+#These are no longer active Keys: please insert your own from developer.twitter.com
 consumer_key = "4vT6TFI7yIdtNsypX17Z163th"
 consumer_secret = "v9OgxdEy25mELUU9JOU1k8FsfGtHQOBEDlx3V51oauOzzsqZxz"
 access_token = "1227215889461846017-KBoPxWlnrJZ3SZoC9VmedcOG5laF68"
 access_token_secret = "bOm10DTuJ2JytBKI1911tVpMCzNMH8pJSDLKcGPl2ZYHQ"
 
+#switch these out to whichever configuration is necessary
 client = pymongo.MongoClient("mongodb://localhost:27017")
 db = client["Twitter-Data"]
 col = db["Tweets"]
@@ -27,13 +29,8 @@ col = db["Tweets"]
 # overwriting tweepy StreamListener class
 class Listener(tweepy.StreamListener):
 
-    def __init__(self, output_file = sys.stdout):
+    def __init__(self):
         super(Listener, self).__init__()
-        self.output_file = output_file
-
-    def on_status(self, status):
-        print(status.user.screen_name, '\n', status.text, file = self.output_file)
-        print()
 
     def on_data(self, data):
         col.insert_one(json.loads(data))
@@ -64,7 +61,7 @@ def streamData():
             time.sleep(900)
             print("%d minutes passed" %((i+1)*15))
             stream.disconnect()
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
         print('Stream stopped')
     finally:
         print('Done')
@@ -74,6 +71,24 @@ def streamData():
 def RESTprobeData():
     auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
     auth.set_access_token(access_token, access_token_secret)
+    api = tweepy.API(auth, wait_on_rate_limit_notify=True, wait_on_rate_limit=True)
+    print("ready")
+
+    keywords = ['#coronavirus', '#COVID19', '#DSTMVCA', '#AMVCA7', '#TachaXAMVCA', ]
+    num_dupes = 0
+    try:
+        for keyword in keywords:
+            for status in tweepy.Cursor(api.search, q=keyword).items():
+                tweet = json.loads(json.dumps(status._json))
+                tweet["_id"] = tweet["id"]
+                try:
+                    col.insert_one(tweet)
+                except pymongo.errors.DuplicateKeyError:
+                    num_dupes = num_dupes + 1
+    except KeyboardInterrupt:
+        print("Interrupted")
+        pass
+    print("Number of ignored duplicate tweets: %d" %(num_dupes))
 #END Data Crawl ---------------------------------------------------------------------------------
 
 
@@ -408,16 +423,15 @@ def printSampleData(limit = 1000, skip = 0, draw = False):
     tweets = fetchList(skip = skip, limit = limit)
     results = parseSample(tweets, verbose=True)
     
-    # mention_graph = createGraph(results["mention_network"])
-    # mention_stats = getGraphStats(mention_graph, verbose = True)
-    # print("The most mentioned user is: %s, mentioned %s times" %(mention_stats["most_in"]))
+    mention_graph = createGraph(results["mention_network"])
+    mention_stats = getGraphStats(mention_graph, verbose = True)
+    print("The most mentioned user is: %s, mentioned %s times" %(mention_stats["most_in"]))
 
-    # hashtag_graph = createGraph(results["hashtag_network"])
-    # hashtag_stats = getGraphStats(hashtag_graph, verbose = True)
-    # print("The hashtag that occurred with most other hashtags is: %s %s times" %(hashtag_stats["highest_degree"]))
+    hashtag_graph = createGraph(results["hashtag_network"])
+    hashtag_stats = getGraphStats(hashtag_graph, verbose = True)
+    print("The hashtag that occurred with most other hashtags is: %s %s times" %(hashtag_stats["highest_degree"]))
     if draw:
         drawGraph(mention_graph)
         drawGraph(hashtag_graph)
 #END Sample Analysis ----------------------------------------------------------------------------
 
-printSampleData(limit = 10000)    
